@@ -1,114 +1,30 @@
 """
-LangChain agent implementation for interacting with IBKR assets using natural language.
+LangGraph agent implementation for interacting with IBKR assets using natural language.
 """
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Annotated, Sequence, TypedDict, cast, Tuple
 import json
 from typing import Union
-from langchain.agents import Tool, AgentExecutor, LLMSingleActionAgent
-from langchain.prompts import StringPromptTemplate
-from langchain.schema import AgentAction, AgentFinish, BaseOutputParser
-from langchain.memory import ConversationBufferMemory
+from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.messages import BaseMessage, FunctionMessage, HumanMessage
+from langchain.tools import BaseTool, StructuredTool, Tool
+from langchain_core.utils.function_calling import convert_to_openai_function
 from langchain_community.chat_models import BedrockChat
-from langchain.chains import LLMChain
-from langchain.callbacks.manager import CallbackManager
+from langchain_core.agents import AgentAction, AgentFinish
+from langchain_core.messages import AIMessage, HumanMessage
 from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
+from langgraph.graph import StateGraph, END
+from langchain.agents import create_openai_functions_agent
+from langchain_core.agents import AgentActionMessageLog, AgentFinish
 
-from langchain.agents import AgentOutputParser
-
-class IBKROutputParser(AgentOutputParser):
-    """Parser for IBKR agent output."""
-    
-    def parse(self, text: str) -> Union[AgentAction, AgentFinish]:
-        """Parse text into agent action or finish."""
-        try:
-            response = text.strip()
-            # Extract JSON from markdown code block if present
-            if "```json" in response:
-                response = response.split("```json")[1].split("```")[0]
-            
-            response_json = json.loads(response)
-            action = response_json["action"]
-            action_input = response_json["action_input"]
-            
-            if action == "Final Answer":
-                return AgentFinish(
-                    return_values={"output": action_input},
-                    log=text
-                )
-            
-            return AgentAction(
-                tool=action,
-                tool_input=action_input,
-                log=text
-            )
-        except Exception as e:
-            return AgentFinish(
-                return_values={
-                    "output": f"I encountered an error: {str(e)}. Please rephrase your request."
-                },
-                log=text
-            )
-
-class IBKRAgentPrompt(StringPromptTemplate):
-    """Custom prompt template for IBKR agent."""
-    
-    template: str = """You are an AI assistant that helps users interact with their Interactive Brokers account.
-You can help with tasks like checking account balance, viewing positions, getting asset information, and placing trades.
-
-Previous conversation:
-{chat_history}
-
-Current question: {input}
-
-You have access to these tools:
-
-{tools}
-
-To use a tool, respond with:
-```json
-{{
-    "action": "tool_name",
-    "action_input": {{tool parameters}}
-}}
-```
-
-To provide a direct response without using tools, respond with:
-```json
-{{
-    "action": "Final Answer",
-    "action_input": "Your response here"
-}}
-```
-
-Remember:
-1. Always check account information before suggesting trades
-2. Confirm trade details with users before execution
-3. Provide clear explanations of market data
-4. Be cautious with order placement
-5. Use proper security types (STK for stocks, CASH for forex)
-
-Think through the required steps carefully, then respond:"""
-
-    def format(self, **kwargs) -> str:
-        """Format the prompt template."""
-        # Format tools list before template formatting
-        tools = kwargs.get("tools", [])
-        if isinstance(tools, list):
-            tools_str = "\n".join([f"- {tool.name}: {tool.description}" for tool in tools])
-            kwargs["tools"] = tools_str
-            
-        # Format chat history
-        chat_history = kwargs.get("chat_history", "")
-        if isinstance(chat_history, list):
-            chat_history = "\n".join([f"Human: {m.content}" if m.type == "human" else f"Assistant: {m.content}" for m in chat_history])
-            kwargs["chat_history"] = chat_history
-            
-        return self.template.format(**kwargs)
+class State(TypedDict):
+    """State definition for the agent."""
+    messages: Annotated[Sequence[BaseMessage], "The messages in the conversation"]
+    next: str
 
 class IBKRAgent:
-    """LangChain agent for interacting with IBKR account."""
+    """LangGraph agent for interacting with IBKR account."""
     
-    def __init__(self, model_id: str = "anthropic.claude-v2"):
+    def __init__(self, model_id: str = "anthropic.claude-sonnet-4-20250514-v1:0"):
         """Initialize the IBKR agent with specified model."""
         self.llm = BedrockChat(
             model_id=model_id,
@@ -118,42 +34,19 @@ class IBKRAgent:
         )
         
         self.tools = self._get_tools()
-        self.prompt = IBKRAgentPrompt(
-            input_variables=["input", "chat_history", "tools"]
-        )
+        self.prompt = self._create_prompt()
         
-        self.output_parser = IBKROutputParser()
-        
-        # Initialize memory
-        self.memory = ConversationBufferMemory(
-            memory_key="chat_history",
-            return_messages=True,
-            input_key="input"
-        )
-        
-        # Create LLMChain with prompt and llm
-        self.llm_chain = LLMChain(
+        # Create agent with function calling
+        self.agent = create_openai_functions_agent(
             llm=self.llm,
-            prompt=self.prompt,
-            memory=self.memory
-        )
-        
-        self.agent = LLMSingleActionAgent(
-            llm_chain=self.llm_chain,
-            output_parser=self.output_parser,
-            stop=["\nObservation:"],
-            allowed_tools=[tool.name for tool in self.tools]
-        )
-        
-        self.agent_executor = AgentExecutor.from_agent_and_tools(
-            agent=self.agent,
             tools=self.tools,
-            memory=self.memory,
-            verbose=True,
-            max_iterations=5
+            prompt=self.prompt
         )
+        
+        # Create agent graph
+        self.workflow = self._create_workflow()
 
-    def _get_tools(self) -> List[Tool]:
+    def _get_tools(self) -> List[BaseTool]:
         """Create tools from MCP server capabilities."""
         from .mcp_server import get_server
         
@@ -168,16 +61,96 @@ class IBKRAgent:
             )
         return tools
 
+    def _create_prompt(self) -> ChatPromptTemplate:
+        """Create the agent prompt template."""
+        template = """You are an AI assistant that helps users interact with their Interactive Brokers account.
+You can help with tasks like checking account balance, viewing positions, getting asset information, and placing trades.
+
+Previous conversation:
+{chat_history}
+
+Current question: {input}
+
+You have access to these tools:
+
+{tools}
+
+Remember:
+1. Always check account information before suggesting trades
+2. Confirm trade details with users before execution
+3. Provide clear explanations of market data
+4. Be cautious with order placement
+5. Use proper security types (STK for stocks, CASH for forex)
+
+Think through the required steps carefully, then respond."""
+
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", template),
+            MessagesPlaceholder(variable_name="chat_history"),
+            ("human", "{input}"),
+            MessagesPlaceholder(variable_name="agent_scratchpad"),
+        ])
+
+        return prompt
+
+    def _create_workflow(self) -> StateGraph:
+        """Create the agent workflow graph."""
+        workflow = StateGraph(State)
+        
+        # Define the agent node that processes messages
+        def agent_node(state: State) -> dict:
+            # Get agent output
+            output = self.agent.invoke(state)
+            
+            # If agent wants to use a tool
+            if isinstance(output, AgentActionMessageLog):
+                # Execute the tool
+                tool_name = output.tool
+                tool_args = output.tool_input
+                tool = next(t for t in self.tools if t.name == tool_name)
+                observation = tool.func(**tool_args)
+                
+                # Add tool result to messages
+                state["messages"].append(
+                    FunctionMessage(content=str(observation), name=tool_name)
+                )
+                return {"next": "agent"}
+            
+            # If agent is done
+            elif isinstance(output, AgentFinish):
+                state["messages"].append(AIMessage(content=output.return_values["output"]))
+                return {"next": "end"}
+            
+            # Unexpected output
+            else:
+                raise ValueError(f"Unexpected output type: {type(output)}")
+        
+        # Add nodes and edges
+        workflow.add_node("agent", agent_node)
+        workflow.set_entry_point("agent")
+        workflow.add_edge("agent", "agent")
+        workflow.add_edge("agent", END)
+        
+        return workflow.compile()
 
     async def run(self, query: str) -> str:
         """Run the agent with a user query."""
         try:
-            # Run the agent with the query
-            response = await self.agent_executor.arun(
-                input=query,
-                tools=self.tools
+            # Initialize state
+            state = State(
+                messages=[HumanMessage(content=query)],
+                next="agent"
             )
             
-            return response
+            # Run the workflow
+            result = await self.workflow.ainvoke(state)
+            
+            # Extract the final answer
+            final_message = result["messages"][-1]
+            if isinstance(final_message, AIMessage):
+                return final_message.content
+            else:
+                return str(final_message.content)
+            
         except Exception as e:
             return f"Error: {str(e)}"

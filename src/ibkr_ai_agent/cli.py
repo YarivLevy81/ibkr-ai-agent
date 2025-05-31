@@ -105,7 +105,7 @@ def cli(ctx: click.Context) -> None:
 
 @cli.command()
 @click.argument('query')
-@click.option('--model', '-m', default="anthropic.claude-v2",
+@click.option('--model', '-m', default="anthropic.claude-sonnet-4-20250514-v1:0",
               help="Bedrock model ID to use")
 def chat(query: str, model: str) -> None:
     """
