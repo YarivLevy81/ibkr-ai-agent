@@ -1,10 +1,13 @@
 """
 Tests for the IBKR MCP server implementation.
 """
+from unittest.mock import Mock, patch
+
 import pytest
-from unittest.mock import Mock, patch, AsyncMock
-from ib_insync import IB, Stock, Forex
+from ib_insync import IB, Forex, Stock
+
 from ibkr_ai_agent.mcp_server import IBKRMCPServer
+
 
 @pytest.fixture
 def mock_ib():

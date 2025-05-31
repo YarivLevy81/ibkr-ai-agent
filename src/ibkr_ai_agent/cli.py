@@ -1,15 +1,14 @@
 """
 Command-line interface for the IBKR AI agent.
 """
-import os
-import click
 import asyncio
 from pathlib import Path
-from typing import Optional
-import json
+
+import click
 from dotenv import load_dotenv
 
 from .agent import IBKRAgent
+
 
 def setup_config(ctx: click.Context, update_existing: bool = False) -> None:
     """Set up or update configuration."""
@@ -63,7 +62,7 @@ AWS_DEFAULT_REGION=us-east-1
             click.echo("3. You have enabled Claude models in AWS Bedrock")
         
         load_dotenv(env_file)
-    except Exception as e:
+    except Exception:
         if not ctx.obj or not ctx.obj.get('testing'):
             raise
 

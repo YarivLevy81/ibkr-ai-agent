@@ -1,20 +1,22 @@
 """
 LangGraph agent implementation for interacting with IBKR assets using natural language.
 """
-from typing import Dict, Any, List, Annotated, Sequence, TypedDict, cast, Tuple
-import json
-from typing import Union
-from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.messages import BaseMessage, FunctionMessage, HumanMessage
-from langchain.tools import BaseTool, StructuredTool, Tool
-from langchain_core.utils.function_calling import convert_to_openai_function
-from langchain_community.chat_models import BedrockChat
-from langchain_core.agents import AgentAction, AgentFinish
-from langchain_core.messages import AIMessage, HumanMessage
-from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
-from langgraph.graph import StateGraph, END
+from typing import Annotated, List, Sequence, TypedDict
+
 from langchain.agents import create_openai_functions_agent
+from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
+from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain.tools import BaseTool, Tool
+from langchain_community.chat_models import BedrockChat
 from langchain_core.agents import AgentActionMessageLog, AgentFinish
+from langchain_core.messages import (
+    AIMessage,
+    BaseMessage,
+    FunctionMessage,
+    HumanMessage,
+)
+from langgraph.graph import END, StateGraph
+
 
 class State(TypedDict):
     """State definition for the agent."""

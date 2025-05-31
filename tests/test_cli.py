@@ -1,12 +1,14 @@
 """
 Tests for the IBKR AI agent CLI.
 """
-import os
-import pytest
 from pathlib import Path
 from unittest.mock import Mock, patch
+
+import pytest
 from click.testing import CliRunner
-from ibkr_ai_agent.cli import cli, setup_config
+
+from ibkr_ai_agent.cli import cli
+
 
 @pytest.fixture
 def runner():

@@ -1,12 +1,14 @@
 """
 Tests for the IBKR AI agent implementation.
 """
+from unittest.mock import AsyncMock, Mock, patch
+
 import pytest
-from unittest.mock import Mock, patch, AsyncMock, call
-from langchain_core.messages import AIMessage, HumanMessage, FunctionMessage
-from langchain_core.agents import AgentFinish, AgentActionMessageLog
-from ibkr_ai_agent.agent import IBKRAgent, State
-from ibkr_ai_agent.mcp_server import IBKRMCPServer
+from langchain_core.agents import AgentActionMessageLog, AgentFinish
+from langchain_core.messages import AIMessage, FunctionMessage, HumanMessage
+
+from ibkr_ai_agent.agent import IBKRAgent
+
 
 @pytest.fixture
 def mock_bedrock():

@@ -2,11 +2,11 @@
 MCP server implementation for Interactive Brokers API integration.
 Provides tools for interacting with IBKR accounts and assets.
 """
-from typing import Dict, Any, Optional
 import os
-from pathlib import Path
-from ib_insync import IB, Stock, Forex, Contract
+from typing import Any, Dict
+
 from dotenv import load_dotenv
+from ib_insync import IB, Forex, Stock
 
 # Load environment variables
 load_dotenv()
