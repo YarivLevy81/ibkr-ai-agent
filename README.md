@@ -191,16 +191,6 @@ To contribute or modify:
    pytest
    ```
 
-### Why uv?
-
-We recommend using [uv](https://github.com/astral-sh/uv) as it offers several advantages:
-
-- 🚀 10-100x faster than pip
-- 📦 Reliable dependency resolution
-- 🔒 Deterministic builds
-- 🔄 Compatible with pip/requirements.txt
-- 💻 Cross-platform support
-
 ## License
 
 MIT License - see LICENSE file for details.
